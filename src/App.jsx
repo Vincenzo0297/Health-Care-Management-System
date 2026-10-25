@@ -7,8 +7,7 @@ import Login from './Main Page/Login Page/Login'
 import Register from './Main Page/Register Page/Register'
 import Dashboard from './User Page/Dashboard/Dashboard'
 import Profile from './User Page/My Profile/Profile'
-import CreditFinancial from './User Page/Credit and Financial/CreditFinancial'
-import ScanMaker from './User Page/Scan Maker/ScanMaker'
+import ScanMaker from './Processing Module/Scan Maker/ScanMaker'
 
 function ProtectedRoute({ children }) {
   const [user, setUser] = useState(null)
@@ -34,7 +33,6 @@ function App() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/dashboard/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/dashboard/myprofile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/dashboard/creditfinancial" element={<ProtectedRoute><CreditFinancial /></ProtectedRoute>} />
       <Route path="/dashboard/scanmaker" element={<ProtectedRoute><ScanMaker /></ProtectedRoute>} />
     </Routes>
   )

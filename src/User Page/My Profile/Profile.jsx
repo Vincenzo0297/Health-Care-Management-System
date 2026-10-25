@@ -7,7 +7,6 @@ import './Profile.css'
 
 const navItems = [
   { icon: '🏠', label: 'Dashboard', path: '/dashboard' },
-  { icon: '🧮', label: 'Credit and Financial', path: '/dashboard/creditfinancial' },
 ]
 
 const emptyProfile = {

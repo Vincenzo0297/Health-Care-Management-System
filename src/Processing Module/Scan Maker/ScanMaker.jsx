@@ -1,188 +1,135 @@
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './ScanMaker.css'
 
-const customerDirectory = [
-  { name: 'Alice Tan',  cin: 'CIN-100123', gcin: 'GCIN-200456' },
-  { name: 'Bob Lim',    cin: 'CIN-100234', gcin: 'GCIN-200567' },
-  { name: 'Carol Ng',   cin: 'LCIN-10031', gcin: 'GCIN-200678' },
-  { name: 'David Koh',  cin: 'CIN-100345', gcin: 'GCIN-200789' },
-  { name: 'Eva Wong',   cin: 'LCIN-10042', gcin: 'GCIN-200890' },
-  { name: 'Frank Lee',  cin: 'CIN-100456', gcin: 'GCIN-200901' },
-  { name: 'Grace Yeo',  cin: 'LCIN-10053', gcin: 'GCIN-201012' },
-  { name: 'Henry Chua', cin: 'CIN-100567', gcin: 'GCIN-201123' },
-]
-
 const ALLOWED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg']
-const MAX_SIZE_MB   = 10
+const MAX_SIZE_MB = 10
 
 function ScanMaker() {
-  const navigate     = useNavigate()
+  const navigate = useNavigate()
   const fileInputRef = useRef(null)
-
-  // ── Upload panel toggle ──
   const [uploadOpen, setUploadOpen] = useState(false)
-
-  // ── Customer Info ──
-  const [form, setForm] = useState({ customerName: '', cin: '', gcin: '', insuranceType: 'Auto Insurance' })
-  const [retrieveStatus, setRetrieveStatus]     = useState(null)
-  const [retrievedCustomer, setRetrievedCustomer] = useState(null)
-  const [formError, setFormError]               = useState('')
-
-  // ── Documents ──
-  const [documents, setDocuments]     = useState([])
-  const [dragOver, setDragOver]       = useState(false)
+  const [form, setForm] = useState({
+    customerName: '',
+    cin: '',
+    gcin: '',
+    insuranceType: 'Auto Insurance',
+  })
+  const [formError, setFormError] = useState('')
+  const [documents, setDocuments] = useState([])
+  const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState('')
 
-  // ── Retrieve ──
-  const handleRetrieve = () => {
-    const cin  = form.cin.trim()
-    const gcin = form.gcin.trim()
-    if (!cin || !gcin) {
-      setRetrieveStatus('not_found')
-      setFormError('Please enter both CIN / LCIN and GCIN to retrieve customer info.')
-      return
-    }
-    const match = customerDirectory.find(
-      (c) => c.cin.toLowerCase() === cin.toLowerCase() &&
-             c.gcin.toLowerCase() === gcin.toLowerCase()
-    )
-    if (match) {
-      setForm({ ...form, customerName: match.name, cin: match.cin, gcin: match.gcin })
-      setRetrievedCustomer(match)
-      setRetrieveStatus('found')
-      setFormError('')
-    } else {
-      setRetrievedCustomer(null)
-      setRetrieveStatus('not_found')
-      setFormError('No customer found with the entered CIN / LCIN and GCIN.')
-    }
+  const handleChange = (event) => {
+    setForm({ ...form, [event.target.name]: event.target.value })
+    setFormError('')
   }
 
-  // ── File handling ──
   const processFiles = (files) => {
     setUploadError('')
     const errors = []
-    const valid  = []
+    const valid = []
+
     Array.from(files).forEach((file) => {
-      if (!ALLOWED_TYPES.includes(file.type))
+      if (!ALLOWED_TYPES.includes(file.type)) {
         errors.push(`"${file.name}" is not a supported file type.`)
-      else if (file.size > MAX_SIZE_MB * 1024 * 1024)
+      } else if (file.size > MAX_SIZE_MB * 1024 * 1024) {
         errors.push(`"${file.name}" exceeds the ${MAX_SIZE_MB}MB limit.`)
-      else if (documents.find((d) => d.name === file.name))
+      } else if (documents.some((document) => document.name === file.name)) {
         errors.push(`"${file.name}" is already added.`)
-      else
+      } else {
         valid.push({ name: file.name, size: file.size, type: file.type })
+      }
     })
+
     if (errors.length) setUploadError(errors.join(' '))
-    if (valid.length)  setDocuments((prev) => [...prev, ...valid])
+    if (valid.length) setDocuments((previous) => [...previous, ...valid])
   }
 
-  const handleFileInput = (e) => { processFiles(e.target.files); e.target.value = '' }
-  const handleDrop = (e) => { e.preventDefault(); setDragOver(false); processFiles(e.dataTransfer.files) }
-  const handleRemoveDoc = (name) => setDocuments((prev) => prev.filter((d) => d.name !== name))
-
-  const formatSize = (bytes) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  const handleSubmit = () => {
+    if (!form.customerName.trim() || !form.cin.trim() || !form.gcin.trim()) {
+      setFormError('Enter the customer name, CIN / LCIN, and GCIN to continue.')
+      return
+    }
+    navigate('/dashboard')
   }
+
+  const formatSize = (bytes) => (
+    bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  )
   const fileIcon = (type) => {
     if (type === 'application/pdf') return '📄'
     if (type.startsWith('image/')) return '🖼️'
     return '📎'
   }
 
-  // ── Submit ──
-  const handleSubmit = () => {
-    if (!form.customerName.trim() || !form.cin.trim() || !form.gcin.trim()) {
-      setFormError('Please retrieve a valid customer before submitting.')
-      return
-    }
-    navigate('/dashboard')
-  }
-
   return (
     <div className="sm-page">
-
-      {/* ── Outer bordered box ── */}
       <div className={`sm-box ${uploadOpen ? 'sm-box-expanded' : ''}`}>
-
-        {/* ── LEFT PANEL ── */}
         <div className="sm-left">
-
-          {/* Top row: title + Upload Document toggle button */}
           <div className="sm-left-topbar">
             <h1 className="sm-title">Scan Maker</h1>
             <button
               className={`sm-btn-upload-toggle ${uploadOpen ? 'sm-btn-upload-toggle-active' : ''}`}
-              onClick={() => setUploadOpen((prev) => !prev)}
+              onClick={() => setUploadOpen((previous) => !previous)}
             >
               {uploadOpen ? '✕ Close Upload' : '📎 Upload Document'}
             </button>
           </div>
 
-          {/* Customer Information */}
           <div className="sm-section">
             <h2 className="sm-section-title">Customer Information</h2>
 
             <div className="sm-field">
-              <label>Customer Name</label>
+              <label htmlFor="customer-name">Customer Name</label>
               <input
+                id="customer-name"
                 type="text"
                 className="sm-input"
+                name="customerName"
                 value={form.customerName}
-                onChange={(e) => { setForm({ ...form, customerName: e.target.value }); setRetrieveStatus(null); setFormError('') }}
-                placeholder="e.g. Alice Tan"
+                onChange={handleChange}
+                placeholder="Enter customer name"
               />
             </div>
 
             <div className="sm-retrieve-row">
               <div className="sm-field">
-                <label>CIN / LCIN <span className="sm-required">*</span></label>
+                <label htmlFor="customer-cin">CIN / LCIN <span className="sm-required">*</span></label>
                 <input
+                  id="customer-cin"
                   type="text"
                   className="sm-input"
+                  name="cin"
                   value={form.cin}
-                  onChange={(e) => { setForm({ ...form, cin: e.target.value }); setRetrieveStatus(null); setFormError('') }}
-                  placeholder="e.g. CIN-100123"
+                  onChange={handleChange}
                 />
               </div>
               <div className="sm-field">
-                <label>GCIN <span className="sm-required">*</span></label>
+                <label htmlFor="customer-gcin">GCIN <span className="sm-required">*</span></label>
                 <input
+                  id="customer-gcin"
                   type="text"
                   className="sm-input"
+                  name="gcin"
                   value={form.gcin}
-                  onChange={(e) => { setForm({ ...form, gcin: e.target.value }); setRetrieveStatus(null); setFormError('') }}
-                  placeholder="e.g. GCIN-200456"
+                  onChange={handleChange}
                 />
-              </div>
-              <div className="sm-field sm-retrieve-btn-col">
-                <label>&nbsp;</label>
-                <button className="sm-btn-retrieve" onClick={handleRetrieve}>
-                  Retrieve Customer Information
-                </button>
               </div>
             </div>
 
-            {formError && <p className="sm-msg sm-msg-error">{formError}</p>}
-
-            {retrieveStatus === 'found' && retrievedCustomer && (
-              <div className="sm-retrieve-success">
-                <span className="sm-check">✔</span>
-                <div>
-                  <p className="sm-retrieved-name">{retrievedCustomer.name}</p>
-                  <p className="sm-retrieved-ids">{retrievedCustomer.cin} · {retrievedCustomer.gcin}</p>
-                </div>
-              </div>
-            )}
+            {formError && <p className="sm-msg sm-msg-error" role="alert">{formError}</p>}
 
             <div className="sm-field sm-field-half">
-              <label>Insurance Type</label>
+              <label htmlFor="insurance-type">Insurance Type</label>
               <select
+                id="insurance-type"
                 className="sm-input"
+                name="insuranceType"
                 value={form.insuranceType}
-                onChange={(e) => setForm({ ...form, insuranceType: e.target.value })}
+                onChange={handleChange}
               >
                 <option>Auto Insurance</option>
                 <option>Home Insurance</option>
@@ -192,27 +139,29 @@ function ScanMaker() {
             </div>
           </div>
 
-          {/* Bottom actions */}
           <div className="sm-left-footer">
             <button className="sm-btn-create" onClick={handleSubmit}>Create Case</button>
             <button className="sm-btn-cancel" onClick={() => navigate('/dashboard')}>Cancel</button>
           </div>
         </div>
 
-        {/* ── RIGHT PANEL (upload) — slides in/out ── */}
         <div className={`sm-right ${uploadOpen ? 'sm-right-open' : 'sm-right-closed'}`}>
           <p className="sm-upload-label">Upload Document</p>
           <p className="sm-upload-hint">PDF, PNG, JPG · max {MAX_SIZE_MB}MB per file</p>
 
           <div
             className={`sm-dropzone ${dragOver ? 'sm-dropzone-active' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragOver={(event) => { event.preventDefault(); setDragOver(true) }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
+            onDrop={(event) => {
+              event.preventDefault()
+              setDragOver(false)
+              processFiles(event.dataTransfer.files)
+            }}
           >
             <span className="sm-dropzone-icon">📂</span>
-            <p className="sm-dropzone-text">Drag & drop files here</p>
-            <button className="sm-btn-browse" onClick={() => fileInputRef.current.click()}>
+            <p className="sm-dropzone-text">Drag &amp; drop files here</p>
+            <button type="button" className="sm-btn-browse" onClick={() => fileInputRef.current?.click()}>
               Browse Files
             </button>
             <input
@@ -220,29 +169,35 @@ function ScanMaker() {
               type="file"
               multiple
               accept=".pdf,.png,.jpg,.jpeg"
-              onChange={handleFileInput}
-              style={{ display: 'none' }}
+              onChange={(event) => {
+                processFiles(event.target.files)
+                event.target.value = ''
+              }}
+              hidden
             />
           </div>
 
-          {uploadError && <p className="sm-msg sm-msg-error">{uploadError}</p>}
+          {uploadError && <p className="sm-msg sm-msg-error" role="alert">{uploadError}</p>}
 
           {documents.length > 0 && (
             <ul className="sm-file-list">
-              {documents.map((doc) => (
-                <li key={doc.name} className="sm-file-item">
-                  <span className="sm-file-icon">{fileIcon(doc.type)}</span>
+              {documents.map((document) => (
+                <li key={document.name} className="sm-file-item">
+                  <span className="sm-file-icon">{fileIcon(document.type)}</span>
                   <div className="sm-file-info">
-                    <span className="sm-file-name">{doc.name}</span>
-                    <span className="sm-file-size">{formatSize(doc.size)}</span>
+                    <span className="sm-file-name">{document.name}</span>
+                    <span className="sm-file-size">{formatSize(document.size)}</span>
                   </div>
-                  <button className="sm-file-remove" onClick={() => handleRemoveDoc(doc.name)}>✕</button>
+                  <button
+                    className="sm-file-remove"
+                    onClick={() => setDocuments((previous) => previous.filter((item) => item.name !== document.name))}
+                    aria-label={`Remove ${document.name}`}
+                  >✕</button>
                 </li>
               ))}
             </ul>
           )}
         </div>
-
       </div>
     </div>
   )

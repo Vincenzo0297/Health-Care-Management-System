@@ -1,35 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { signOut } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  where,
+} from 'firebase/firestore'
 import { auth, db } from '../../DB/firebase'
 import './Dashboard.css'
 
 const navItems = [
   { icon: '🏠', label: 'Dashboard',              path: '/dashboard' },
-  { icon: '🧮', label: 'Credit and Financial',   path: '/dashboard/creditfinancial' },
   { icon: '👤', label: 'My Profile',             path: '/dashboard/myprofile' },
-]
-
-// ── Mock customer directory (simulates pulling from a database) ──
-const customerDirectory = [
-  { name: 'Alice Tan',  cin: 'CIN-100123', gcin: 'GCIN-200456' },
-  { name: 'Bob Lim',    cin: 'CIN-100234', gcin: 'GCIN-200567' },
-  { name: 'Carol Ng',   cin: 'LCIN-10031', gcin: 'GCIN-200678' },
-  { name: 'David Koh',  cin: 'CIN-100345', gcin: 'GCIN-200789' },
-  { name: 'Eva Wong',   cin: 'LCIN-10042', gcin: 'GCIN-200890' },
-  { name: 'Frank Lee',  cin: 'CIN-100456', gcin: 'GCIN-200901' },
-  { name: 'Grace Yeo',  cin: 'LCIN-10053', gcin: 'GCIN-201012' },
-  { name: 'Henry Chua', cin: 'CIN-100567', gcin: 'GCIN-201123' },
-]
-
-const initialCases = [
-  { id: 'CASE-1001', client: 'Alice Tan',  cin: 'CIN-100123',  gcin: 'GCIN-200456', type: 'Auto Insurance',   status: 'Open',        date: '2026-10-01', assignee: 'John Doe' },
-  { id: 'CASE-1002', client: 'Bob Lim',    cin: 'CIN-100234',  gcin: 'GCIN-200567', type: 'Home Insurance',   status: 'In Progress', date: '2026-10-03', assignee: 'John Doe' },
-  { id: 'CASE-1003', client: 'Carol Ng',   cin: 'LCIN-10031',  gcin: 'GCIN-200678', type: 'Life Insurance',   status: 'Closed',      date: '2026-09-28', assignee: 'Jane Smith' },
-  { id: 'CASE-1004', client: 'David Koh',  cin: 'CIN-100345',  gcin: 'GCIN-200789', type: 'Health Insurance', status: 'Open',        date: '2026-10-05', assignee: 'John Doe' },
-  { id: 'CASE-1005', client: 'Eva Wong',   cin: 'LCIN-10042',  gcin: 'GCIN-200890', type: 'Auto Insurance',   status: 'Pending',     date: '2026-10-07', assignee: 'Jane Smith' },
-  { id: 'CASE-1006', client: 'Frank Lee',  cin: 'CIN-100456',  gcin: 'GCIN-200901', type: 'Home Insurance',   status: 'In Progress', date: '2026-10-08', assignee: 'John Doe' },
 ]
 
 const statusStyle = {
@@ -38,8 +23,6 @@ const statusStyle = {
   'Pending':     { bg: '#ffedd5', text: '#ea580c' },
   'Closed':      { bg: '#dcfce7', text: '#16a34a' },
 }
-
-const emptyForm = { client: '', cin: '', gcin: '', type: 'Auto Insurance' }
 
 const ROWS_PER_PAGE = 5
 
@@ -52,11 +35,9 @@ function Dashboard() {
     name: auth.currentUser?.displayName || auth.currentUser?.email || 'Account',
   })
   const [profileError, setProfileError] = useState('')
-  const [cases, setCases]         = useState(initialCases)
+  const [cases, setCases]         = useState([])
+  const [isLoadingCases, setIsLoadingCases] = useState(true)
   const [search, setSearch]       = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [form, setForm]           = useState(emptyForm)
-  const [formError, setFormError] = useState('')
 
   // ── Pagination ──
   const [currentPage, setCurrentPage] = useState(1)
@@ -64,15 +45,11 @@ function Dashboard() {
   // ── View case modal ──
   const [viewCase, setViewCase] = useState(null)
 
-  // ── Retrieve customer info ──
-  const [retrieveStatus, setRetrieveStatus] = useState(null) // null | 'found' | 'not_found'
-
   useEffect(() => {
     const user = auth.currentUser
     if (!user) return
 
     let isMounted = true
-
     const loadProfile = async () => {
       try {
         const profileSnapshot = await getDoc(doc(db, 'users', user.uid))
@@ -88,8 +65,37 @@ function Dashboard() {
     }
 
     loadProfile()
+    const casesQuery = query(collection(db, 'cases'), where('createdBy', '==', user.uid))
+    const unsubscribeCases = onSnapshot(casesQuery, (snapshot) => {
+      if (!isMounted) return
+      const loadedCases = snapshot.docs.map((caseDocument) => {
+        const caseData = caseDocument.data()
+        const createdAt = caseData.createdAt?.toDate?.()
+        return {
+          ...caseData,
+          id: caseData.caseNumber || caseDocument.id,
+          date: createdAt ? createdAt.toLocaleDateString() : caseData.date || '—',
+          assignee: caseData.assignee || user.displayName || user.email || '—',
+        }
+      })
+      loadedCases.sort((first, second) => {
+        const firstCreatedAt = first.createdAt?.toMillis?.() || 0
+        const secondCreatedAt = second.createdAt?.toMillis?.() || 0
+        return secondCreatedAt - firstCreatedAt
+      })
+      setCases(loadedCases)
+      setIsLoadingCases(false)
+    }, (error) => {
+      console.error('Unable to load cases:', error)
+      if (isMounted) {
+        setProfileError('Unable to load cases. Please check your Firestore access and try again.')
+        setIsLoadingCases(false)
+      }
+    })
+
     return () => {
       isMounted = false
+      unsubscribeCases()
     }
   }, [])
 
@@ -106,34 +112,12 @@ function Dashboard() {
   const nameParts = profile.name.split(/\s+/).filter(Boolean)
   const initials = nameParts.map((part) => part[0]).join('').slice(0, 2).toUpperCase()
 
-  const handleRetrieve = () => {
-    const cin  = form.cin.trim()
-    const gcin = form.gcin.trim()
-    if (!cin || !gcin) {
-      setRetrieveStatus('not_found')
-      setFormError('Please enter both CIN / LCIN and GCIN before retrieving.')
-      return
-    }
-    const match = customerDirectory.find(
-      (c) => c.cin.toLowerCase() === cin.toLowerCase() &&
-             c.gcin.toLowerCase() === gcin.toLowerCase()
-    )
-    if (match) {
-      setForm({ ...form, client: match.name, cin: match.cin, gcin: match.gcin })
-      setRetrieveStatus('found')
-      setFormError('')
-    } else {
-      setRetrieveStatus('not_found')
-      setFormError('No customer found with the entered CIN / LCIN and GCIN.')
-    }
-  }
-
   // ── Search filter ──
   const filtered = cases.filter((c) =>
-    c.id.toLowerCase().includes(search.toLowerCase()) ||
-    c.client.toLowerCase().includes(search.toLowerCase()) ||
-    c.cin.toLowerCase().includes(search.toLowerCase()) ||
-    c.gcin.toLowerCase().includes(search.toLowerCase())
+    String(c.id || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(c.client || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(c.cin || '').toLowerCase().includes(search.toLowerCase()) ||
+    String(c.gcin || '').toLowerCase().includes(search.toLowerCase())
   )
 
   // ── Pagination ──
@@ -144,38 +128,6 @@ function Dashboard() {
   const handleSearch = (val) => {
     setSearch(val)
     setCurrentPage(1)
-  }
-
-  // ── Form handlers ──
-  const handleFormChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
-    setFormError('')
-  }
-
-  const handleCreate = () => {
-    if (!form.client.trim() || !form.cin.trim() || !form.gcin.trim()) {
-      setFormError('Please retrieve a valid customer before creating a case.')
-      return
-    }
-    const newCase = {
-      ...form,
-      id:     `CASE-${1000 + cases.length + 1}`,
-      date:   new Date().toISOString().split('T')[0],
-      status: 'Open',
-      assignee: '-',
-    }
-    setCases([newCase, ...cases])
-    setForm(emptyForm)
-    setRetrieveStatus(null)
-    setFormError('')
-    setShowModal(false)
-  }
-
-  const handleModalClose = () => {
-    setForm(emptyForm)
-    setRetrieveStatus(null)
-    setFormError('')
-    setShowModal(false)
   }
 
   return (
@@ -273,7 +225,11 @@ function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.length > 0 ? (
+                  {isLoadingCases ? (
+                    <tr>
+                      <td colSpan={9} className="db-no-results">Loading cases...</td>
+                    </tr>
+                  ) : paginated.length > 0 ? (
                     paginated.map((c) => (
                       <tr key={c.id}>
                         <td><span className="db-case-id">{c.id}</span></td>
@@ -351,93 +307,6 @@ function Dashboard() {
           </div>
         </div>
       </main>
-
-      {/* ── NEW CASE MODAL ── */}
-      {showModal && (
-        <div className="db-modal-overlay" onClick={handleModalClose}>
-          <div className="db-modal" onClick={(e) => e.stopPropagation()}>
-
-            <div className="db-modal-header">
-              <h2>Create New Case</h2>
-              <button className="db-modal-close" onClick={handleModalClose}>✕</button>
-            </div>
-
-            <div className="db-modal-body">
-              {formError && <p className="db-form-error">{formError}</p>}
-
-              {/* Customer Name */}
-              <div className="db-modal-field">
-                <label>Customer Name <span className="db-required">*</span></label>
-                <input
-                  type="text"
-                  name="client"
-                  value={form.client}
-                  onChange={(e) => { setForm({ ...form, client: e.target.value }); setRetrieveStatus(null); setFormError('') }}
-                  placeholder="e.g. Alice Tan"
-                />
-              </div>
-
-              {/* CIN / LCIN and GCIN inputs with Retrieve button */}
-              <div className="db-retrieve-row">
-                <div className="db-modal-field">
-                  <label>CIN / LCIN <span className="db-required">*</span></label>
-                  <input
-                    type="text"
-                    name="cin"
-                    value={form.cin}
-                    onChange={(e) => { setForm({ ...form, cin: e.target.value }); setRetrieveStatus(null); setFormError('') }}
-                    placeholder="e.g. CIN-100123"
-                  />
-                </div>
-                <div className="db-modal-field">
-                  <label>GCIN <span className="db-required">*</span></label>
-                  <input
-                    type="text"
-                    name="gcin"
-                    value={form.gcin}
-                    onChange={(e) => { setForm({ ...form, gcin: e.target.value }); setRetrieveStatus(null); setFormError('') }}
-                    placeholder="e.g. GCIN-200456"
-                  />
-                </div>
-                <div className="db-modal-field db-retrieve-btn-wrap">
-                  <label>&nbsp;</label>
-                  <button className="db-btn-retrieve" onClick={handleRetrieve}>
-                    🔍 Retrieve
-                  </button>
-                </div>
-              </div>
-
-              {/* Retrieved customer info */}
-              {retrieveStatus === 'found' && (
-                <div className="db-retrieve-result">
-                  <span className="db-retrieve-check">✔</span>
-                  <div>
-                    <p className="db-retrieve-name">{form.client}</p>
-                    <p className="db-retrieve-ids">{form.cin} · {form.gcin}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Insurance Type */}
-              <div className="db-modal-field">
-                <label>Insurance Type</label>
-                <select name="type" value={form.type} onChange={handleFormChange}>
-                  <option>Auto Insurance</option>
-                  <option>Home Insurance</option>
-                  <option>Life Insurance</option>
-                  <option>Health Insurance</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="db-modal-footer">
-              <button className="db-btn-cancel" onClick={handleModalClose}>Cancel</button>
-              <button className="db-btn-create" onClick={handleCreate}>Create Case</button>
-            </div>
-
-          </div>
-        </div>
-      )}
 
       {/* ── VIEW CASE MODAL ── */}
       {viewCase && (
