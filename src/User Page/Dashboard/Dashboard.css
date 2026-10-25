@@ -831,8 +831,8 @@
 /* ── View case grid ── */
 .db-view-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.2rem 2rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.2rem 1rem;
 }
 .db-view-full { grid-column: 1 / -1; }
 
@@ -858,6 +858,10 @@
 @media (max-width: 480px) {
   .db-view-grid { grid-template-columns: 1fr; }
   .db-page-controls { flex-wrap: wrap; }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+  .db-view-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ── Retrieve row ── */

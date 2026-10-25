@@ -368,3 +368,176 @@
   .sm-grid-3 { grid-template-columns: 1fr; }
   .sm-field-half { max-width: 100%; }
 }
+
+.sm-content {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0fr;
+  align-items: start;
+  gap: 0;
+  transition: grid-template-columns 0.35s ease, gap 0.35s ease;
+}
+
+.sm-content-with-upload {
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  gap: 1.25rem;
+}
+
+.sm-case-card,
+.sm-upload-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 2rem;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+}
+
+.sm-upload-card {
+  padding: 0;
+  max-height: 0;
+  opacity: 0;
+  transform: translateX(36px);
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.35s ease, padding 0.35s ease, max-height 0.35s ease;
+}
+
+.sm-upload-card-open {
+  padding: 2rem;
+  max-height: 1600px;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.sm-upload-card-closed {
+  min-width: 0;
+  box-shadow: none;
+}
+
+.sm-case-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sm-case-header p {
+  margin: 0.4rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.sm-case-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.sm-input {
+  height: auto;
+  min-height: 42px;
+  border-radius: 8px;
+}
+
+.sm-textarea {
+  min-height: 110px;
+  padding: 0.75rem;
+  resize: vertical;
+}
+
+.sm-left-footer {
+  justify-content: flex-end;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 1.25rem;
+}
+
+.sm-btn-create:disabled,
+.sm-btn-cancel:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.sm-upload-card .sm-dropzone {
+  flex: none;
+  min-height: 250px;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.sm-upload-card .sm-file-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.sm-upload-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .sm-content {
+    width: 100%;
+  }
+
+  .sm-case-card,
+  .sm-upload-card {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 1100px) {
+  .sm-content-with-upload {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .sm-content,
+  .sm-content-with-upload {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .sm-content-with-upload {
+    gap: 1rem;
+  }
+
+  .sm-upload-card {
+    max-height: 0;
+    transform: translateY(-16px);
+    transition: opacity 0.25s ease, transform 0.35s ease, padding 0.35s ease, max-height 0.35s ease;
+  }
+
+  .sm-upload-card-open {
+    max-height: 1000px;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 560px) {
+  .sm-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sm-left-footer {
+    flex-direction: column-reverse;
+  }
+
+  .sm-left-footer button {
+    width: 100%;
+  }
+}

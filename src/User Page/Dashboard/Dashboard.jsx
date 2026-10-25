@@ -324,6 +324,13 @@ function Dashboard() {
                   ['CIN / LCIN',     viewCase.cin],
                   ['GCIN',           viewCase.gcin],
                   ['Insurance Type', viewCase.type],
+                  ['Visit / Claim Type', viewCase.claimType || '—'],
+                  ['Patient Date of Birth', viewCase.patientDateOfBirth || '—'],
+                  ['Contact Number', viewCase.patientPhone || '—'],
+                  ['Date of Service', viewCase.dateOfService || '—'],
+                  ['Hospital / Clinic', viewCase.healthcareProvider || '—'],
+                  ['Policy Number',  viewCase.policyNumber || '—'],
+                  ['Claim Amount', viewCase.claimAmount != null ? viewCase.claimAmount : '—'],
                   ['Assignee',       viewCase.assignee],
                   ['Date Created',   viewCase.date],
                 ].map(([label, value]) => (
@@ -341,6 +348,18 @@ function Dashboard() {
                       color: statusStyle[viewCase.status]?.text,
                     }}
                   >{viewCase.status}</span>
+                </div>
+                <div className="db-view-item db-view-full">
+                  <span className="db-view-label">Diagnosis / Reason for Visit</span>
+                  <span className="db-view-value">{viewCase.diagnosis || '—'}</span>
+                </div>
+                <div className="db-view-item db-view-full">
+                  <span className="db-view-label">Treatment / Procedure</span>
+                  <span className="db-view-value">{viewCase.treatment || '—'}</span>
+                </div>
+                <div className="db-view-item db-view-full">
+                  <span className="db-view-label">Comments</span>
+                  <span className="db-view-value">{viewCase.comments || '—'}</span>
                 </div>
               </div>
             </div>
