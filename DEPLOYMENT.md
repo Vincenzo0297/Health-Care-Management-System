@@ -1,6 +1,6 @@
 # Firebase Hosting deployment
 
-This project uses Vite, which writes production files to `dist/`. Firebase Hosting is configured to serve that directory.
+This project uses Vite, which writes production files to `dist/`. Firebase Hosting serves that directory and rewrites app routes to its built `index.html`. Do not set the rewrite destination to `/main.jsx`; that source file is bundled by Vite and is not a deployable entry point.
 
 Run the following from the project root to build the app and deploy it:
 
