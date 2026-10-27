@@ -6,8 +6,6 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  query,
-  where,
 } from 'firebase/firestore'
 import { auth, db } from '../../DB/firebase'
 import './Dashboard.css'
@@ -65,14 +63,14 @@ function Dashboard() {
     }
 
     loadProfile()
-    const casesQuery = query(collection(db, 'cases'), where('createdBy', '==', user.uid))
-    const unsubscribeCases = onSnapshot(casesQuery, (snapshot) => {
+    const unsubscribeCases = onSnapshot(collection(db, 'cases'), (snapshot) => {
       if (!isMounted) return
       const loadedCases = snapshot.docs.map((caseDocument) => {
         const caseData = caseDocument.data()
         const createdAt = caseData.createdAt?.toDate?.()
         return {
           ...caseData,
+          firestoreId: caseDocument.id,
           id: caseData.caseNumber || caseDocument.id,
           date: createdAt ? createdAt.toLocaleDateString() : caseData.date || '—',
           assignee: caseData.assignee || user.displayName || user.email || '—',
@@ -234,9 +232,17 @@ function Dashboard() {
                       <tr key={c.id}>
                         <td><span className="db-case-id">{c.id}</span></td>
                         <td>
+                          <div className="db-row-actions">
                           <button className="db-btn-view" onClick={() => setViewCase(c)}>
                             View
                           </button>
+                          <button
+                            className="db-btn-view"
+                            onClick={() => navigate(`/dashboard/processingmaker/${c.firestoreId}`)}
+                          >
+                            Access
+                          </button>
+                          </div>
                         </td>
                         <td>{c.client}</td>
                         <td><span className="db-cin">{c.cin}</span></td>

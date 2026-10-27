@@ -8,6 +8,7 @@ import Register from './Main Page/Register Page/Register'
 import Dashboard from './User Page/Dashboard/Dashboard'
 import Profile from './User Page/My Profile/Profile'
 import ScanMaker from './Processing Module/Scan Maker/ScanMaker'
+import ProcessingMaker from './Processing Module/Processing Maker/ProcessingMaker'
 
 function ProtectedRoute({ children }) {
   const [user, setUser] = useState(null)
@@ -34,6 +35,8 @@ function App() {
       <Route path="/dashboard/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/dashboard/myprofile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/dashboard/scanmaker" element={<ProtectedRoute><ScanMaker /></ProtectedRoute>} />
+      <Route path="/dashboard/processingmaker" element={<ProtectedRoute><ProcessingMaker /></ProtectedRoute>} />
+      <Route path="/dashboard/processingmaker/:caseId" element={<ProtectedRoute><ProcessingMaker /></ProtectedRoute>} />
     </Routes>
   )
 }

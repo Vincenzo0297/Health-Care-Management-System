@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, create, update: if signedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    match /cases/{caseId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'Open'
+        && request.resource.data.keys().hasOnly([
+          'caseNumber',
+          'client',
+          'cin',
+          'gcin',
+          'type',
+          'claimType',
+          'patientDateOfBirth',
+          'patientPhone',
+          'dateOfService',
+          'healthcareProvider',
+          'diagnosis',
+          'treatment',
+          'policyNumber',
+          'claimAmount',
+          'comments',
+          'documents',
+          'status',
+          'assignee',
+          'createdBy',
+          'createdAt',
+          'updatedAt'
+        ]);
+
+      allow update: if signedIn()
+        && resource.data.status in ['Open', 'In Progress']
+        && request.resource.data.processingBy == request.auth.uid
+        && request.resource.data.status in ['Open', 'In Progress', 'Pending', 'Closed']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'client',
+          'cin',
+          'gcin',
+          'type',
+          'claimType',
+          'patientDateOfBirth',
+          'patientPhone',
+          'dateOfService',
+          'healthcareProvider',
+          'diagnosis',
+          'treatment',
+          'policyNumber',
+          'claimAmount',
+          'comments',
+          'documents',
+          'status',
+          'processingBy',
+          'processingAssignee',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+  }
+}

@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { auth, db } from '../../DB/firebase'
+import { collection, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage'
+import { auth, db, storage } from '../../DB/firebase'
 import '../../User Page/Dashboard/Dashboard.css'
 import './ScanMaker.css'
 
@@ -27,8 +28,9 @@ const emptyForm = {
   comments: '',
 }
 
-function ScanMaker() {
+function ScanMaker({ processingCaseId = null }) {
   const navigate = useNavigate()
+  const processingMode = Boolean(processingCaseId)
   const fileInputRef = useRef(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -36,8 +38,63 @@ function ScanMaker() {
   const [formError, setFormError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [documents, setDocuments] = useState([])
+  const [savedDocuments, setSavedDocuments] = useState([])
+  const [viewingDocument, setViewingDocument] = useState(null)
+  const [documentUrl, setDocumentUrl] = useState('')
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false)
+  const [documentViewError, setDocumentViewError] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  const [processingStatus, setProcessingStatus] = useState('In Progress')
+  const [isLoadingCase, setIsLoadingCase] = useState(processingMode)
+
+  useEffect(() => {
+    if (!processingCaseId) return undefined
+
+    let isMounted = true
+    const loadCase = async () => {
+      try {
+        const caseSnapshot = await getDoc(doc(db, 'cases', processingCaseId))
+        if (!isMounted) return
+        if (!caseSnapshot.exists()) {
+          setFormError('This case could not be found.')
+          return
+        }
+
+        const caseData = caseSnapshot.data()
+        setForm({
+          ...emptyForm,
+          customerName: caseData.client || '',
+          cin: caseData.cin || '',
+          gcin: caseData.gcin || '',
+          patientDateOfBirth: caseData.patientDateOfBirth || '',
+          patientPhone: caseData.patientPhone || '',
+          claimType: caseData.claimType || 'Outpatient',
+          dateOfService: caseData.dateOfService || '',
+          healthcareProvider: caseData.healthcareProvider || '',
+          diagnosis: caseData.diagnosis || '',
+          treatment: caseData.treatment || '',
+          policyNumber: caseData.policyNumber || '',
+          claimAmount: caseData.claimAmount != null ? String(caseData.claimAmount) : '',
+          comments: caseData.comments || '',
+        })
+        setProcessingStatus(caseData.status || 'In Progress')
+        setSavedDocuments(Array.isArray(caseData.documents) ? caseData.documents : [])
+      } catch (error) {
+        console.error('Unable to load case for processing:', error)
+        if (isMounted) {
+          setFormError(error?.code === 'permission-denied'
+            ? 'You do not have permission to access this case. Check the Firestore rules for Processing Maker access.'
+            : error?.message || 'Unable to load this case. Please try again.')
+        }
+      } finally {
+        if (isMounted) setIsLoadingCase(false)
+      }
+    }
+
+    loadCase()
+    return () => { isMounted = false }
+  }, [processingCaseId])
 
   const handleChange = (event) => {
     setForm((currentForm) => ({ ...currentForm, [event.target.name]: event.target.value }))
@@ -48,16 +105,21 @@ function ScanMaker() {
     setUploadError('')
     const errors = []
     const valid = []
+    const existingNames = new Set([
+      ...savedDocuments.map((document) => document.name),
+      ...documents.map((document) => document.name),
+    ])
 
     Array.from(files).forEach((file) => {
       if (!ALLOWED_TYPES.includes(file.type)) {
         errors.push(`"${file.name}" is not a supported file type.`)
       } else if (file.size > MAX_SIZE_MB * 1024 * 1024) {
         errors.push(`"${file.name}" exceeds the ${MAX_SIZE_MB}MB limit.`)
-      } else if (documents.some((document) => document.name === file.name)) {
+      } else if (existingNames.has(file.name)) {
         errors.push(`"${file.name}" is already added.`)
       } else {
-        valid.push({ name: file.name, size: file.size, type: file.type })
+        existingNames.add(file.name)
+        valid.push({ file, name: file.name, size: file.size, type: file.type })
       }
     })
 
@@ -65,7 +127,51 @@ function ScanMaker() {
     if (valid.length) setDocuments((previous) => [...previous, ...valid])
   }
 
-  const handleCreateCase = async (event) => {
+  const uploadPendingDocuments = async (caseId) => {
+    const uploaded = []
+    try {
+      for (const document of documents) {
+        const fileRef = storageRef(storage, `case-documents/${caseId}/${doc(collection(db, 'cases')).id}`)
+        await uploadBytes(fileRef, document.file, { contentType: document.type })
+        uploaded.push({
+          name: document.name,
+          size: document.size,
+          type: document.type,
+          path: fileRef.fullPath,
+        })
+      }
+      return uploaded
+    } catch (error) {
+      await Promise.all(uploaded.map(async (document) => {
+        try {
+          await deleteObject(storageRef(storage, document.path))
+        } catch (cleanupError) {
+          console.error('Unable to clean up an incomplete document upload:', cleanupError)
+        }
+      }))
+      throw error
+    }
+  }
+
+  const handleViewDocument = async (document) => {
+    setViewingDocument(document)
+    setDocumentUrl('')
+    setDocumentViewError('')
+    setIsLoadingDocument(true)
+    try {
+      const url = await getDownloadURL(storageRef(storage, document.path))
+      setDocumentUrl(url)
+    } catch (error) {
+      console.error('Unable to open case document:', error)
+      setDocumentViewError(error?.code === 'storage/object-not-found'
+        ? 'This document file could not be found.'
+        : error?.message || 'Unable to open this document. Please try again.')
+    } finally {
+      setIsLoadingDocument(false)
+    }
+  }
+
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const user = auth.currentUser
     const customerName = form.customerName.trim()
@@ -80,7 +186,7 @@ function ScanMaker() {
       || !form.healthcareProvider.trim()
       || !form.diagnosis.trim()
     ) {
-      setFormError('Complete all required case details before creating the case.')
+      setFormError(`Complete all required case details before ${processingMode ? 'saving' : 'creating'} the case.`)
       return
     }
     if (!user) {
@@ -91,8 +197,7 @@ function ScanMaker() {
     setIsSaving(true)
     setFormError('')
     try {
-      await addDoc(collection(db, 'cases'), {
-        caseNumber: `CASE-${Date.now()}`,
+      const caseDetails = {
         client: customerName,
         cin,
         gcin,
@@ -107,18 +212,39 @@ function ScanMaker() {
         policyNumber: form.policyNumber.trim(),
         claimAmount: form.claimAmount ? Number(form.claimAmount) : null,
         comments: form.comments.trim(),
-        status: 'Open',
-        assignee: user.displayName || user.email || '—',
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      })
+      }
+
+      if (processingMode) {
+        await updateDoc(doc(db, 'cases', processingCaseId), {
+          ...caseDetails,
+          status: processingStatus,
+          processingBy: user.uid,
+          processingAssignee: user.displayName || user.email || '—',
+        })
+      } else {
+        const caseRef = doc(collection(db, 'cases'))
+        const uploadedDocuments = await uploadPendingDocuments(caseRef.id)
+        await setDoc(caseRef, {
+          ...caseDetails,
+          caseNumber: `CASE-${Date.now()}`,
+          status: 'Open',
+          assignee: user.displayName || user.email || '—',
+          createdBy: user.uid,
+          createdAt: serverTimestamp(),
+          documents: uploadedDocuments,
+        })
+      }
       setForm(emptyForm)
-      navigate('/dashboard')
+      setDocuments([])
+      setSavedDocuments([])
+      navigate(processingMode ? '/dashboard/processingmaker' : '/dashboard')
     } catch (error) {
-      console.error('Unable to create case:', error)
+      console.error(`Unable to ${processingMode ? 'save' : 'create'} case:`, error)
       if (error?.code === 'permission-denied') {
-        setFormError('Firestore denied this case. Update the Firestore rules to allow signed-in users to create cases with their own UID, then try again.')
+        setFormError(processingMode
+          ? 'Firestore denied this update. Update the Firestore rules to allow Processing Makers to read and update cases.'
+          : 'Firestore denied this case. Update the Firestore rules to allow signed-in users to create cases with their own UID, then try again.')
       } else {
         setFormError(error?.message || 'Unable to create the case. Please try again.')
       }
@@ -152,7 +278,7 @@ function ScanMaker() {
       <header className="db-navbar">
         <div className="db-nav-left">
           <button className="db-hamburger" onClick={() => setSidebarOpen((open) => !open)} aria-label="Toggle sidebar">☰</button>
-          <div className="db-nav-logo" onClick={() => navigate('/dashboard')}>🏥 MediCare Pro</div>
+          <div className="db-nav-logo" onClick={() => navigate(processingMode ? '/dashboard/processingmaker' : '/dashboard')}>🏥 MediCare Pro</div>
         </div>
         <div className="db-nav-right">
           <div className="db-avatar-wrap">
@@ -186,12 +312,13 @@ function ScanMaker() {
             <section className="sm-case-card">
               <header className="sm-case-header">
                 <div>
-                  <h1 className="sm-title">Create Healthcare Case</h1>
-                  <p>Enter the patient, visit, and claim details for this healthcare case.</p>
+                  <h1 className="sm-title">{processingMode ? 'Process Healthcare Case' : 'Create Healthcare Case'}</h1>
+                  <p>{processingMode ? 'Review the scan details and add the necessary processing information.' : 'Enter the patient, visit, and claim details for this healthcare case.'}</p>
                 </div>
               </header>
 
-              <form onSubmit={handleCreateCase}>
+              {isLoadingCase ? <p>Loading case details...</p> : (
+              <form onSubmit={handleSubmit}>
                 <div className="sm-section">
                   <h2 className="sm-section-title">Patient Information</h2>
                   <div className="sm-form-grid">
@@ -314,15 +441,31 @@ function ScanMaker() {
                   </div>
                 </div>
 
+                {processingMode && (
+                  <div className="sm-section">
+                    <h2 className="sm-section-title">Processing</h2>
+                    <div className="sm-field">
+                      <label htmlFor="processing-status">Case Status</label>
+                      <select id="processing-status" className="sm-input" value={processingStatus} onChange={(event) => setProcessingStatus(event.target.value)}>
+                        <option>Open</option>
+                        <option>In Progress</option>
+                        <option>Pending</option>
+                        <option>Closed</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 {formError && <p className="sm-msg sm-msg-error" role="alert">{formError}</p>}
 
                 <div className="sm-left-footer">
-                  <button type="submit" className="sm-btn-create" disabled={isSaving}>
-                    {isSaving ? 'Creating...' : 'Create Case'}
+                  <button type="submit" className="sm-btn-create" disabled={isSaving || isLoadingCase}>
+                    {isSaving ? (processingMode ? 'Saving...' : 'Creating...') : (processingMode ? 'Save Details' : 'Create Case')}
                   </button>
                   <button type="button" className="sm-btn-cancel" onClick={handleCancel} disabled={isSaving}>Cancel</button>
                 </div>
               </form>
+              )}
             </section>
 
             <section
@@ -337,6 +480,7 @@ function ScanMaker() {
                 </div>
               </header>
 
+              {!processingMode && (
               <div
                 className={`sm-dropzone ${dragOver ? 'sm-dropzone-active' : ''}`}
                 onDragOver={(event) => { event.preventDefault(); setDragOver(true) }}
@@ -364,10 +508,32 @@ function ScanMaker() {
                   hidden
                 />
               </div>
+              )}
 
-              {uploadError && <p className="sm-msg sm-msg-error" role="alert">{uploadError}</p>}
+              {!processingMode && uploadError && <p className="sm-msg sm-msg-error" role="alert">{uploadError}</p>}
 
-              {documents.length > 0 ? (
+              {processingMode && (
+                savedDocuments.length ? (
+                  <ul className="sm-file-list">
+                    {savedDocuments.map((document) => (
+                      <li key={document.path} className="sm-file-item">
+                        <span className="sm-file-icon">{document.type === 'application/pdf' ? '📄' : '🖼️'}</span>
+                        <div className="sm-file-info">
+                          <span className="sm-file-name">{document.name}</span>
+                          <span className="sm-file-size">{formatSize(document.size)}</span>
+                        </div>
+                        <button type="button" className="sm-btn-browse" onClick={() => handleViewDocument(document)}>
+                          View
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="sm-upload-empty">No documents attached to this case.</p>
+                )
+              )}
+
+              {!processingMode && documents.length > 0 ? (
                 <ul className="sm-file-list">
                   {documents.map((document) => (
                     <li key={document.name} className="sm-file-item">
@@ -379,18 +545,38 @@ function ScanMaker() {
                       <button
                         type="button"
                         className="sm-file-remove"
-                        onClick={() => setDocuments((previous) => previous.filter((item) => item.name !== document.name))}
+                        onClick={() => setDocuments((previous) => previous.filter((item) => item.file !== document.file))}
                         aria-label={`Remove ${document.name}`}
                       >✕</button>
                     </li>
                   ))}
                 </ul>
-              ) : (
+              ) : !processingMode ? (
                 <p className="sm-upload-empty">No documents selected.</p>
-              )}
+              ) : null}
             </section>
         </div>
       </main>
+      {viewingDocument && (
+        <div className="db-modal-overlay" onClick={() => setViewingDocument(null)}>
+            <section className="db-modal sm-document-modal" onClick={(event) => event.stopPropagation()}>
+              <header className="db-modal-header">
+                <h2>{viewingDocument.name}</h2>
+                <button className="db-modal-close" onClick={() => setViewingDocument(null)} aria-label="Close document viewer">✕</button>
+              </header>
+              <div className="db-modal-body sm-document-viewer">
+                {isLoadingDocument && <p>Loading document...</p>}
+                {documentViewError && <p className="sm-msg sm-msg-error" role="alert">{documentViewError}</p>}
+                {documentUrl && viewingDocument.type === 'application/pdf' && (
+                  <iframe title={viewingDocument.name} src={documentUrl} />
+                )}
+                {documentUrl && viewingDocument.type.startsWith('image/') && (
+                  <img src={documentUrl} alt={viewingDocument.name} />
+                )}
+              </div>
+            </section>
+        </div>
+      )}
     </div>
   )
 }
